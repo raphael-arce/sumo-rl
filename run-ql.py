@@ -13,7 +13,6 @@ from sumo_rl import SumoEnvironment
 from sumo_rl.agents import QLAgent
 from sumo_rl.exploration import EpsilonGreedy
 
-
 if __name__ == '__main__':
 
     prs = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -33,6 +32,7 @@ if __name__ == '__main__':
     prs.add_argument("-mingreen", dest="min_green", type=int, default=5, required=False, help="Minimum green time.\n")
     prs.add_argument("-maxgreen", dest="max_green", type=int, default=60, required=False, help="Maximum green time.\n")
     prs.add_argument("-gui", action="store_true", default=False, help="Run with visualization on SUMO.\n")
+    prs.add_argument("-fixed", action="store_true", default=False, help="Run with fixed timing traffic signals.\n")
     prs.add_argument("-s", dest="seconds", type=int, default=80000, required=False,
                      help="Number of simulation seconds.\n")
     args = prs.parse_args()
@@ -49,22 +49,27 @@ if __name__ == '__main__':
                           max_green=args.max_green,
                           max_depart_delay=0)
 
-
     initial_states = env.reset()
     ql_agents = {ts: QLAgent(starting_state=env.encode(initial_states[ts], ts),
                              state_space=env.observation_spaces(ts),
                              action_space=env.action_spaces(ts),
                              alpha=args.alpha,
                              gamma=args.gamma,
-                             exploration_strategy=EpsilonGreedy(initial_epsilon=args.epsilon, min_epsilon=args.min_epsilon, decay=args.decay)) for ts in env.ts_ids}
+                             exploration_strategy=EpsilonGreedy(initial_epsilon=args.epsilon,
+                                                                min_epsilon=args.min_epsilon, decay=args.decay)) for ts
+                 in env.ts_ids}
     infos = []
     done = {'__all__': False}
-    while not done['__all__']:
-        actions = {ts: ql_agents[ts].act() for ts in ql_agents.keys()}
+    if args.fixed:
+        while not done['__all__']:
+            _, _, done, _ = env.step({})
+    else:
+        while not done['__all__']:
+            actions = {ts: ql_agents[ts].act() for ts in ql_agents.keys()}
 
-        s, r, done, info = env.step(action=actions)
+            s, r, done, info = env.step(action=actions)
 
-        for agent_id in s.keys():
-            ql_agents[agent_id].learn(next_state=env.encode(s[agent_id], agent_id), reward=r[agent_id])
+            for agent_id in s.keys():
+                ql_agents[agent_id].learn(next_state=env.encode(s[agent_id], agent_id), reward=r[agent_id])
 
     env.save_csv(out_csv_name=out_csv, run=1)
