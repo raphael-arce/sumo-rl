@@ -42,11 +42,12 @@ class TrafficSignal:
 
         Action space is which green phase is going to be open for the next delta_time seconds
         """
-        self.observation_space = spaces.Box(low=np.zeros(self.num_green_phases + 2*len(self.lanes)), high=np.ones(self.num_green_phases + 2*len(self.lanes)))
+        self.observation_space = spaces.Box(
+            low=np.zeros(self.num_green_phases + 2*len(self.lanes)),
+            high=np.ones(self.num_green_phases + 2*len(self.lanes)))
         self.discrete_observation_space = spaces.Tuple((
             spaces.Discrete(self.num_green_phases),                       # Green Phase
-            #spaces.Discrete(self.max_green//self.delta_time),            # Elapsed time of phase
-            *(spaces.Discrete(10) for _ in range(2*len(self.lanes)))      # Density and stopped-density for each lane
+            spaces.Discrete(10)                                           # Pressure
         ))
         self.action_space = spaces.Discrete(self.num_green_phases)
 
@@ -87,10 +88,8 @@ class TrafficSignal:
     
     def compute_observation(self):
         phase_id = [1 if self.phase//2 == i else 0 for i in range(self.num_green_phases)]  # one-hot encoding
-        #elapsed = self.traffic_signals[ts].time_on_phase / self.max_green
-        density = self.get_lanes_density()
-        queue = self.get_lanes_queue()
-        observation = np.array(phase_id + density + queue)
+        pressure = self.get_pressure()
+        observation = np.array(phase_id + pressure)
         return observation
             
     def compute_reward(self):
@@ -147,7 +146,7 @@ class TrafficSignal:
         return wait_time_per_lane
 
     def get_pressure(self):
-        return abs(sum(traci.lane.getLastStepVehicleNumber(lane) for lane in self.lanes) - sum(traci.lane.getLastStepVehicleNumber(lane) for lane in self.out_lanes))
+        return [abs(sum(traci.lane.getLastStepVehicleNumber(lane) for lane in self.lanes) - sum(traci.lane.getLastStepVehicleNumber(lane) for lane in self.out_lanes))]
 
     def get_out_lanes_density(self):
         vehicle_size_min_gap = 7.5  # 5(vehSize) + 2.5(minGap)

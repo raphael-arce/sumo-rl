@@ -161,7 +161,7 @@ class SumoEnvironment(MultiAgentEnv):
     @property
     def action_space(self):
         return self.traffic_signals[self.ts_ids[0]].action_space
-    
+
     def observation_spaces(self, ts_id):
         return self.traffic_signals[ts_id].observation_space
     
@@ -192,12 +192,14 @@ class SumoEnvironment(MultiAgentEnv):
 
     def encode(self, state, ts_id):
         phase = np.where(state[:self.traffic_signals[ts_id].num_green_phases] == 1)[0]
-        #elapsed = self._discretize_elapsed_time(state[self.num_green_phases])
-        density_queue = [self._discretize_density(d) for d in state[self.traffic_signals[ts_id].num_green_phases:]]
-        return self.radix_encode([phase] + density_queue, ts_id)
+        pressure = [self._discretize_pressure(p) for p in state[self.traffic_signals[ts_id].num_green_phases:]]
+        return self.radix_encode([phase] + pressure, ts_id)
 
     def _discretize_density(self, density):
         return min(int(density*10), 9)
+
+    def _discretize_pressure(self, pressure):
+        return min(int(pressure*10), 9)
 
     def _discretize_elapsed_time(self, elapsed):
         elapsed *= self.max_green
