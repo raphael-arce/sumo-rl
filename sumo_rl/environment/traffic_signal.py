@@ -81,7 +81,7 @@ class TrafficSignal:
             self.next_action_time = self.env.sim_step + self.delta_time
         else:
             self.green_phase = new_phase
-            traci.trafficlight.setPhase(self.id, self.phase + 1)  # turns yellow
+            traci.trafficlight.setPhase(self.id, (self.phase + 1) % len(self.phases))  # turns yellow
             self.next_action_time = self.env.sim_step + self.delta_time + self.yellow_time
             self.is_yellow = True
             self.time_since_last_phase_change = 0
