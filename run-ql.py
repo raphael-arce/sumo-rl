@@ -33,12 +33,14 @@ if __name__ == '__main__':
     prs.add_argument("-mingreen", dest="min_green", type=int, default=5, required=False, help="Minimum green time.\n")
     prs.add_argument("-maxgreen", dest="max_green", type=int, default=60, required=False, help="Maximum green time.\n")
     prs.add_argument("-gui", action="store_true", default=False, help="Run with visualization on SUMO.\n")
+    prs.add_argument("-fixed", action="store_true", default=False, help="Run without RL on SUMO.\n")
     prs.add_argument("-s", dest="seconds", type=int, default=80000, required=False,
                      help="Number of simulation seconds.\n")
     args = prs.parse_args()
     experiment_time = str(datetime.now()).split('.')[0].replace(' ', '_')
-    scenario = args.network.replace('nets/5x5-Raphael/', '').replace('.net.xml', '')
-    out_csv = f'outputs/5x5-Raphael/{scenario}_{experiment_time}_alpha{args.alpha}_gamma{args.gamma}_eps{args.epsilon}_decay{args.decay}'
+    #scenario = args.network.replace('nets/5x5-Raphael/', '').replace('.net.xml', '')
+    scenario = args.network.replace('nets/charlottenburg/', '').replace('.net.xml', '')
+    out_csv = f'outputs/charlottenburg/actuated'
 
     env = SumoEnvironment(net_file=args.network,
                           route_file=args.route,
@@ -47,6 +49,7 @@ if __name__ == '__main__':
                           num_seconds=args.seconds,
                           min_green=args.min_green,
                           max_green=args.max_green,
+                          time_to_teleport=90,
                           max_depart_delay=0)
 
 
@@ -59,12 +62,23 @@ if __name__ == '__main__':
                              exploration_strategy=EpsilonGreedy(initial_epsilon=args.epsilon, min_epsilon=args.min_epsilon, decay=args.decay)) for ts in env.ts_ids}
     infos = []
     done = {'__all__': False}
-    while not done['__all__']:
-        actions = {ts: ql_agents[ts].act() for ts in ql_agents.keys()}
+    if args.fixed:
+        while not done['__all__']:
+            current_step = env.sim_step
+            if current_step % 500 == 0:
+                print(f'current step:  {current_step}')
+            _, _, done, _ = env.step({})
 
-        s, r, done, info = env.step(action=actions)
+    else:
+        while not done['__all__']:
+            current_step = env.sim_step
+            if current_step % 500 == 0:
+                print(f'current step:  {current_step}')
+            actions = {ts: ql_agents[ts].act() for ts in ql_agents.keys()}
 
-        for agent_id in s.keys():
-            ql_agents[agent_id].learn(next_state=env.encode(s[agent_id], agent_id), reward=r[agent_id])
+            s, r, done, info = env.step(action=actions)
+
+            for agent_id in s.keys():
+                ql_agents[agent_id].learn(next_state=env.encode(s[agent_id], agent_id), reward=r[agent_id])
 
     env.save_csv(out_csv_name=out_csv, run=1)
