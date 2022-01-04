@@ -109,6 +109,4 @@ venv.bak/
 # vscode
 settings.json
 
-charlottenburg/
-
 stable_baselines2
