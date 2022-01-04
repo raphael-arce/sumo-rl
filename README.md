@@ -1,3 +1,29 @@
+### This is a fork of [SUMO-RL](https://github.com/LucasAlegre/sumo-rl) 
+It was used in the context of the master's thesis: _Adaptive Traffic Light Control through Reinforcement Learning_
+
+Example command to run a simulation with RL traffic light controls, with given network, flow, simulation duration in seconds, metric _Max Pressure_ and neighbors' _Max Pressure_:
+```
+python run-ql.py -n nets/5x5-Raphael/synthetic.net.xml -r nets/5x5-Raphael/flow.rou.xml -s 10000 -pressure -neighbors
+```
+To run it with _Queue+Density_ and without neighbors' metrics remove `-neighbors` and `-pressure`:
+
+```
+python run-ql.py -n nets/5x5-Raphael/synthetic.net.xml -r nets/5x5-Raphael/flow.rou.xml -s 10000
+```
+
+To run the simulation without RL (uses the traffic light definition of the .net.xml file):
+```
+python run-ql.py -n nets/5x5-Raphael/synthetic.net.xml -r nets/5x5-Raphael/flow.rou.xml -s 10000 -fixed
+```
+
+You can also add `-gui` to run the simulation with the SUMO gui
+
+-------------------------------------------------
+
+Original Readme below
+
+-------------------------------------------------
+
 <img src="outputs/logo.png" align="right" width="30%"/>
 
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)

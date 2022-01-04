@@ -31,17 +31,19 @@ class SumoEnvironment(MultiAgentEnv):
     :single_agent: (bool) If true, it behaves like a regular gym.Env. Else, it behaves like a MultiagentEnv (https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/multi_agent_env.py)
     """
 
-    def __init__(self, net_file, route_file, out_csv_name=None, use_gui=False, num_seconds=20000, max_depart_delay=100000,
-                 time_to_teleport=-1, delta_time=5, yellow_time=2, min_green=5, max_green=50, single_agent=False):
+    def __init__(self, net_file, route_file, add_file=None, out_csv_name=None, use_gui=False, num_seconds=20000, max_depart_delay=100000,
+                 time_to_teleport=-1, delta_time=5, yellow_time=2, min_green=5, max_green=50, single_agent=False, use_neighbors=False, use_pressure=False):
 
         self._net = net_file
         self._route = route_file
+        self._add = add_file
         self.use_gui = use_gui
         if self.use_gui:
             self._sumo_binary = sumolib.checkBinary('sumo-gui')
         else:
             self._sumo_binary = sumolib.checkBinary('sumo')
-
+        self.use_neighbors = use_neighbors
+        self.use_pressure = use_pressure
         self.sim_max_time = num_seconds
         self.delta_time = delta_time  # seconds on sumo at each step
         self.max_depart_delay = max_depart_delay  # Max wait time to insert a vehicle
@@ -54,7 +56,10 @@ class SumoEnvironment(MultiAgentEnv):
 
         self.single_agent = single_agent
         self.ts_ids = traci.trafficlight.getIDList()
-        self.traffic_signals = {ts: TrafficSignal(self, ts, self.delta_time, self.yellow_time, self.min_green, self.max_green) for ts in self.ts_ids}
+        self.traffic_signals = {ts: TrafficSignal(self, ts, self.delta_time, self.yellow_time, self.min_green, self.max_green, self.use_pressure) for ts in self.ts_ids}
+        if self.use_neighbors:
+            for ts in self.traffic_signals:
+                self.traffic_signals[ts].set_neighbors(self.traffic_signals)
         self.vehicles = dict()
 
         self.reward_range = (-float('inf'), float('inf'))
@@ -81,13 +86,18 @@ class SumoEnvironment(MultiAgentEnv):
                      '--waiting-time-memory', '10000',
                      '--time-to-teleport', str(self.time_to_teleport),
                      '--random']
+        if self._add is not None:
+            sumo_cmd.append('-a')
+            sumo_cmd.append(self._add)
         if self.use_gui:
             sumo_cmd.append('--start')
 
         traci.start(sumo_cmd)
 
-        self.traffic_signals = {ts: TrafficSignal(self, ts, self.delta_time, self.yellow_time, self.min_green, self.max_green) for ts in self.ts_ids}
-
+        self.traffic_signals = {ts: TrafficSignal(self, ts, self.delta_time, self.yellow_time, self.min_green, self.max_green, self.use_pressure) for ts in self.ts_ids}
+        if self.use_neighbors:
+            for ts in self.traffic_signals:
+                self.traffic_signals[ts].set_neighbors(self.traffic_signals)
         self.vehicles = dict()
 
         if self.single_agent:
@@ -172,28 +182,35 @@ class SumoEnvironment(MultiAgentEnv):
         traci.simulationStep()
 
     def _compute_step_info(self):
+        total_vehicles = traci.vehicle.getIDCount()
         return {
             'step_time': self.sim_step,
             'reward': self.traffic_signals[self.ts_ids[0]].last_reward,
             'total_stopped': sum(self.traffic_signals[ts].get_total_queued() for ts in self.ts_ids),
-            'total_wait_time': sum(sum(self.traffic_signals[ts].get_waiting_time_per_lane()) for ts in self.ts_ids)
+            'total_wait_time': sum(sum(self.traffic_signals[ts].get_waiting_time_per_lane()) for ts in self.ts_ids),
+            'total_vehicles': total_vehicles,
+            'stops_per_vehicle': sum(self.traffic_signals[ts].get_total_queued() for ts in self.ts_ids)/(1 if total_vehicles == 0 else total_vehicles),
+            'waiting_time_per_vehicle': sum(sum(self.traffic_signals[ts].get_waiting_time_per_lane()) for ts in self.ts_ids)/(1 if total_vehicles == 0 else total_vehicles)
         }
 
     def close(self):
         traci.close()
     
-    def save_csv(self, out_csv_name, run):
+    def save_csv(self, out_csv_name, run=-1):
         if out_csv_name is not None:
             df = pd.DataFrame(self.metrics)
-            df.to_csv(out_csv_name + '_run{}'.format(run) + '.csv', index=False)
+            if run == -1:
+                df.to_csv(out_csv_name, index=False)
+            else:
+                df.to_csv(out_csv_name + '_run{}'.format(run) + '.csv', index=False)
 
 
     # Below functions are for discrete state space
 
     def encode(self, state, ts_id):
         phase = np.where(state[:self.traffic_signals[ts_id].num_green_phases] == 1)[0]
-        pressure = [self._discretize_pressure(p) for p in state[self.traffic_signals[ts_id].num_green_phases:]]
-        return self.radix_encode([phase] + pressure, ts_id)
+        metric = [self._discretize_density(d) for d in state[self.traffic_signals[ts_id].num_green_phases:]]
+        return self.radix_encode([phase] + metric, ts_id)
 
     def _discretize_density(self, density):
         return min(int(density*10), 9)
