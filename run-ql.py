@@ -13,7 +13,6 @@ from sumo_rl import SumoEnvironment
 from sumo_rl.agents import QLAgent
 from sumo_rl.exploration import EpsilonGreedy
 
-
 if __name__ == '__main__':
 
     prs = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -55,7 +54,6 @@ if __name__ == '__main__':
                           use_neighbors=args.neighbors,
                           use_pressure=args.pressure)
 
-
     initial_states = env.reset()
     ql_agents = {ts: QLAgent(starting_state=env.encode(initial_states[ts], ts),
                              state_space=env.observation_spaces(ts),
@@ -64,6 +62,7 @@ if __name__ == '__main__':
                              gamma=args.gamma,
                              exploration_strategy=EpsilonGreedy(initial_epsilon=args.epsilon, min_epsilon=args.min_epsilon, decay=args.decay),
                              tl_id=ts) for ts in env.ts_ids}
+
     infos = []
     done = {'__all__': False}
     if args.fixed:
