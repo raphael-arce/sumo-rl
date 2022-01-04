@@ -23,6 +23,7 @@ if __name__ == '__main__':
     prs.add_argument("-r", dest="route", type=str,
                      default='nets/5x5-Raphael/flow.rou.xml',
                      help="Route definition xml file.\n")
+    prs.add_argument("-+", dest="add", type=str, default=None, required=False, help="Additionals definition xml file.\n")
     prs.add_argument("-a", dest="alpha", type=float, default=0.1, required=False, help="Alpha learning rate.\n")
     prs.add_argument("-g", dest="gamma", type=float, default=0.99, required=False, help="Gamma discount rate.\n")
     prs.add_argument("-e", dest="epsilon", type=float, default=0.05, required=False, help="Epsilon.\n")
@@ -32,22 +33,26 @@ if __name__ == '__main__':
     prs.add_argument("-mingreen", dest="min_green", type=int, default=5, required=False, help="Minimum green time.\n")
     prs.add_argument("-maxgreen", dest="max_green", type=int, default=60, required=False, help="Maximum green time.\n")
     prs.add_argument("-gui", action="store_true", default=False, help="Run with visualization on SUMO.\n")
-    prs.add_argument("-fixed", action="store_true", default=False, help="Run with fixed timing traffic signals.\n")
+    prs.add_argument("-fixed", action="store_true", default=False, help="Run without RL on SUMO.\n")
+    prs.add_argument("-pressure", action="store_true", default=False, help="Run with max pressure as observation metrics. Standard metric is Queue+Density.\n")
+    prs.add_argument("-neighbors", action="store_true", default=False, help="Run with metrics of neighboring intersections.\n")
     prs.add_argument("-s", dest="seconds", type=int, default=80000, required=False,
                      help="Number of simulation seconds.\n")
     args = prs.parse_args()
     experiment_time = str(datetime.now()).split('.')[0].replace(' ', '_')
-    scenario = args.network.replace('nets/5x5-Raphael/', '').replace('.net.xml', '')
-    out_csv = f'outputs/5x5-Raphael/{scenario}_{experiment_time}_alpha{args.alpha}_gamma{args.gamma}_eps{args.epsilon}_decay{args.decay}'
 
     env = SumoEnvironment(net_file=args.network,
                           route_file=args.route,
-                          out_csv_name=out_csv,
+                          add_file=args.add,
+                          out_csv_name=args.out_csv,
                           use_gui=args.gui,
                           num_seconds=args.seconds,
                           min_green=args.min_green,
                           max_green=args.max_green,
-                          max_depart_delay=0)
+                          time_to_teleport=90,
+                          max_depart_delay=0,
+                          use_neighbors=args.neighbors,
+                          use_pressure=args.pressure)
 
     initial_states = env.reset()
     ql_agents = {ts: QLAgent(starting_state=env.encode(initial_states[ts], ts),
@@ -55,16 +60,23 @@ if __name__ == '__main__':
                              action_space=env.action_spaces(ts),
                              alpha=args.alpha,
                              gamma=args.gamma,
-                             exploration_strategy=EpsilonGreedy(initial_epsilon=args.epsilon,
-                                                                min_epsilon=args.min_epsilon, decay=args.decay)) for ts
-                 in env.ts_ids}
+                             exploration_strategy=EpsilonGreedy(initial_epsilon=args.epsilon, min_epsilon=args.min_epsilon, decay=args.decay),
+                             tl_id=ts) for ts in env.ts_ids}
+
     infos = []
     done = {'__all__': False}
     if args.fixed:
         while not done['__all__']:
+            current_step = env.sim_step
+            if current_step % 500 == 0:
+                print(f'current step:  {current_step}')
             _, _, done, _ = env.step({})
+
     else:
         while not done['__all__']:
+            current_step = env.sim_step
+            if current_step % 500 == 0:
+                print(f'current step:  {current_step}')
             actions = {ts: ql_agents[ts].act() for ts in ql_agents.keys()}
 
             s, r, done, info = env.step(action=actions)
@@ -72,4 +84,4 @@ if __name__ == '__main__':
             for agent_id in s.keys():
                 ql_agents[agent_id].learn(next_state=env.encode(s[agent_id], agent_id), reward=r[agent_id])
 
-    env.save_csv(out_csv_name=out_csv, run=1)
+    env.save_csv(out_csv_name=args.out_csv)
